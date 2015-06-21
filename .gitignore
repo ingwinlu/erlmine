@@ -1,0 +1,7 @@
+#vim
+*.swp
+
+#erlang
+_rel
+ebin
+relx
