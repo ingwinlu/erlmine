@@ -1,0 +1,27 @@
+# day 1
+
+## setting up
+setup git repo
+get erlang.mk
+bootstrap and bootstrap-rel
+rename to a less write intensive format
+
+## basic design thoughts
+use a simple_one_for_one sv to spawn 'games', interact on those pids to 'hide' the data behind
+
+## ok, got for it!
+do em_game_sup
+supervisor setup assistance
+why a seperate supervisor?
+replace tabs from templates if you want
+
+## design the gamefield state
+in oop you would do a class for a field and a class to keep track of every field in the same game
+but funcprog!, immutable data, what to do?
+define requirements!
+- fields should be easily accessible by coordinates
+- anything else?
+
+maybe we can use the coordinates as keys in our playfield so we can easily get / replace them if needed
+short overview over datastructs in erlang
+-> dict

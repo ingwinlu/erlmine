@@ -1,13 +1,14 @@
 {application, erlmine, [
-	{description, "Erlang implementation of Minesweeper"},
-	{vsn, "0.1.0"},
-	{id, "git"},
-	{modules, []},
-	{registered, []},
-	{applications, [
-		kernel,
-		stdlib
-	]},
-	{mod, {erlmine_app, []}},
-	{env, []}
+    {description, "Erlang implementation of Minesweeper"},
+    {vsn, "0.1.0"},
+    {id, "git"},
+    {modules, []},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib,
+        crypto
+    ]},
+    {mod, {erlmine_app, []}},
+    {env, []}
 ]}.
