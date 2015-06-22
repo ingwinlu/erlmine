@@ -25,3 +25,11 @@ define requirements!
 maybe we can use the coordinates as keys in our playfield so we can easily get / replace them if needed
 short overview over datastructs in erlang
 -> dict
+
+# day2
+
+## unify encoding
+old implementation mixed atoms and integers, new one always keeps atom on game server side and only converts when printing
+
+## move field generation?
+field generation is a lot of noisy code; should be moved into a seperate module
