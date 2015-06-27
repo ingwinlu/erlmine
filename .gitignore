@@ -2,6 +2,12 @@
 *.swp
 
 #erlang
+*.plt
 _rel
 ebin
 relx
+
+#erlang.mk
+deps/
+.erlang.mk/
+.erlang.mk.packages.*
