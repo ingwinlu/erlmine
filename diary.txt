@@ -33,3 +33,15 @@ old implementation mixed atoms and integers, new one always keeps atom on game s
 
 ## move field generation?
 field generation is a lot of noisy code; should be moved into a seperate module
+
+## remodel printing to be used for status and content
+
+## fully implement basic functionality
+implement winning and auto reveal when select empty field
+
+## data again all over
+the revealed parts of the field should be in em_game
+printing functionality should be in a 'console client'
+
+# day3
+remove state of field from em_field, should all be em_game
