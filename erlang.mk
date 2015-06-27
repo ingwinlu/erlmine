@@ -14,12 +14,16 @@
 
 .PHONY: all deps app rel docs install-docs tests check clean distclean help erlang-mk
 
-ERLANG_MK_VERSION = 1.2.0-564-g178e214
+ERLANG_MK_FILENAME := $(realpath $(lastword $(MAKEFILE_LIST)))
+
+ERLANG_MK_VERSION = 1.2.0-613-g4050af2
 
 # Core configuration.
 
 PROJECT ?= $(notdir $(CURDIR))
 PROJECT := $(strip $(PROJECT))
+
+PROJECT_VERSION ?= rolling
 
 # Verbosity.
 
@@ -117,9 +121,17 @@ help::
 
 # Core functions.
 
+empty :=
+space := $(empty) $(empty)
+comma := ,
+
 define newline
 
 
+endef
+
+define erlang_list
+[$(subst $(space),$(comma),$(strip $(1)))]
 endef
 
 # Adding erlang.mk to make Erlang scripts who call init:get_plain_arguments() happy.
@@ -206,13 +218,22 @@ ifneq ($(SKIP_DEPS),)
 deps::
 else
 deps:: $(ALL_DEPS_DIRS)
+ifneq ($(IS_DEP),1)
+	@rm -f $(ERLANG_MK_TMP)/deps.log
+endif
+	@mkdir -p $(ERLANG_MK_TMP)
 	@for dep in $(ALL_DEPS_DIRS) ; do \
-		if [ -f $$dep/GNUmakefile ] || [ -f $$dep/makefile ] || [ -f $$dep/Makefile ] ; then \
-			$(MAKE) -C $$dep IS_DEP=1 || exit $$? ; \
+		if grep -qs ^$$dep$$$$ $(ERLANG_MK_TMP)/deps.log; then \
+			echo -n; \
 		else \
-			echo "ERROR: No Makefile to build dependency $$dep." ; \
-			exit 1 ; \
-		fi ; \
+			echo $$dep >> $(ERLANG_MK_TMP)/deps.log; \
+			if [ -f $$dep/GNUmakefile ] || [ -f $$dep/makefile ] || [ -f $$dep/Makefile ]; then \
+				$(MAKE) -C $$dep IS_DEP=1 || exit $$?; \
+			else \
+				echo "ERROR: No Makefile to build dependency $$dep."; \
+				exit 1; \
+			fi \
+		fi \
 	done
 endif
 
@@ -229,7 +250,7 @@ define dep_autopatch
 			$(call dep_autopatch2,$(1)); \
 		elif [ 0 != `grep -ci rebar $(DEPS_DIR)/$(1)/Makefile` ]; then \
 			$(call dep_autopatch2,$(1)); \
-		elif [ 0 != `find $(DEPS_DIR)/$(1)/ -type f -name \*.mk -not -name erlang.mk | xargs grep -ci rebar` ]; then \
+		elif [ -n "`find $(DEPS_DIR)/$(1)/ -type f -name \*.mk -not -name erlang.mk | xargs -r grep -i rebar`" ]; then \
 			$(call dep_autopatch2,$(1)); \
 		else \
 			if [ -f $(DEPS_DIR)/$(1)/erlang.mk ]; then \
@@ -265,8 +286,7 @@ endef
 # Overwrite erlang.mk with the current file by default.
 ifeq ($(NO_AUTOPATCH_ERLANG_MK),)
 define dep_autopatch_erlang_mk
-	rm -f $(DEPS_DIR)/$(1)/erlang.mk; \
-	cd $(DEPS_DIR)/$(1)/ && ln -s ../../erlang.mk
+	echo "include $(ERLANG_MK_FILENAME)" > $(DEPS_DIR)/$(1)/erlang.mk
 endef
 else
 define dep_autopatch_erlang_mk
@@ -286,7 +306,7 @@ define dep_autopatch_fetch_rebar
 		git clone -q -n -- https://github.com/rebar/rebar $(ERLANG_MK_TMP)/rebar; \
 		cd $(ERLANG_MK_TMP)/rebar; \
 		git checkout -q 791db716b5a3a7671e0b351f95ddf24b848ee173; \
-		make; \
+		$(MAKE); \
 		cd -; \
 	fi
 endef
@@ -439,10 +459,10 @@ define dep_autopatch_rebar.erl
 	Write("\npre-app::\n"),
 	PatchHook = fun(Cmd) ->
 		case Cmd of
-			"make -C" ++ _ -> Escape(Cmd);
-			"gmake -C" ++ _ -> Escape(Cmd);
-			"make " ++ Cmd1 -> "make -f Makefile.orig.mk " ++ Escape(Cmd1);
-			"gmake " ++ Cmd1 -> "gmake -f Makefile.orig.mk " ++ Escape(Cmd1);
+			"make -C" ++ Cmd1 -> "$$$$\(MAKE) -C" ++ Escape(Cmd1);
+			"gmake -C" ++ Cmd1 -> "$$$$\(MAKE) -C" ++ Escape(Cmd1);
+			"make " ++ Cmd1 -> "$$$$\(MAKE) -f Makefile.orig.mk " ++ Escape(Cmd1);
+			"gmake " ++ Cmd1 -> "$$$$\(MAKE) -f Makefile.orig.mk " ++ Escape(Cmd1);
 			_ -> Escape(Cmd)
 		end
 	end,
@@ -552,7 +572,7 @@ define dep_autopatch_rebar.erl
 			end,
 			[PortSpec(S) || S <- PortSpecs]
 	end,
-	Write("\ninclude ../../erlang.mk"),
+	Write("\ninclude $(ERLANG_MK_FILENAME)"),
 	RunPlugin = fun(Plugin, Step) ->
 		case erlang:function_exported(Plugin, Step, 2) of
 			false -> ok;
@@ -660,18 +680,18 @@ ifeq (,$(dep_$(1)))
 else
 ifeq (1,$(words $(dep_$(1))))
 	$(dep_verbose) VS=git; \
-	REPO=$(dep_$(1)); \
+	REPO=$(patsubst git://github.com/%,https://github.com/%,$(dep_$(1))); \
 	COMMIT=master; \
 	$(call dep_fetch,$(1))
 else
 ifeq (2,$(words $(dep_$(1))))
 	$(dep_verbose) VS=git; \
-	REPO=$(word 1,$(dep_$(1))); \
+	REPO=$(patsubst git://github.com/%,https://github.com/%,$(word 1,$(dep_$(1)))); \
 	COMMIT=$(word 2,$(dep_$(1))); \
 	$(call dep_fetch,$(1))
 else
 	$(dep_verbose) VS=$(word 1,$(dep_$(1))); \
-	REPO=$(word 2,$(dep_$(1))); \
+	REPO=$(patsubst git://github.com/%,https://github.com/%,$(word 2,$(dep_$(1)))); \
 	COMMIT=$(word 3,$(dep_$(1))); \
 	$(call dep_fetch,$(1))
 endif
@@ -686,7 +706,24 @@ endif
 		cd $(DEPS_DIR)/$(1) && ./configure; \
 	fi
 ifeq ($(filter $(1),$(NO_AUTOPATCH)),)
-	@$(call dep_autopatch,$(1))
+	@if [ "$(1)" = "amqp_client" -a "$(RABBITMQ_CLIENT_PATCH)" ]; then \
+		if [ ! -d $(DEPS_DIR)/rabbitmq-codegen ]; then \
+			echo " PATCH  Downloading rabbitmq-codegen"; \
+			git clone https://github.com/rabbitmq/rabbitmq-codegen.git $(DEPS_DIR)/rabbitmq-codegen; \
+		fi; \
+		if [ ! -d $(DEPS_DIR)/rabbitmq-server ]; then \
+			echo " PATCH  Downloading rabbitmq-server"; \
+			git clone https://github.com/rabbitmq/rabbitmq-server.git $(DEPS_DIR)/rabbitmq-server; \
+		fi; \
+		ln -s $(DEPS_DIR)/amqp_client/deps/rabbit_common-0.0.0 $(DEPS_DIR)/rabbit_common; \
+	elif [ "$(1)" = "rabbit" -a "$(RABBITMQ_SERVER_PATCH)" ]; then \
+		if [ ! -d $(DEPS_DIR)/rabbitmq-codegen ]; then \
+			echo " PATCH  Downloading rabbitmq-codegen"; \
+			git clone https://github.com/rabbitmq/rabbitmq-codegen.git $(DEPS_DIR)/rabbitmq-codegen; \
+		fi \
+	else \
+		$(call dep_autopatch,$(1)) \
+	fi
 endif
 endef
 
@@ -782,6 +819,9 @@ COMPILE_MIB_FIRST_PATHS = $(addprefix mibs/,$(addsuffix .mib,$(COMPILE_MIB_FIRST
 
 # Verbosity.
 
+app_verbose_0 = @echo " APP   " $(PROJECT);
+app_verbose = $(app_verbose_$(V))
+
 appsrc_verbose_0 = @echo " APP   " $(PROJECT).app.src;
 appsrc_verbose = $(appsrc_verbose_$(V))
 
@@ -806,18 +846,48 @@ else
 app:: clean app-build
 endif
 
+ifeq ($(wildcard src/$(PROJECT)_app.erl),)
+define app_file
+{application, $(PROJECT), [
+	{description, "$(PROJECT_DESCRIPTION)"},
+	{vsn, "$(PROJECT_VERSION)"},
+	{id, "$(1)"},
+	{modules, [$(2)]},
+	{registered, []},
+	{applications, $(call erlang_list,kernel stdlib $(OTP_DEPS) $(DEPS))}
+]}.
+endef
+else
+define app_file
+{application, $(PROJECT), [
+	{description, "$(PROJECT_DESCRIPTION)"},
+	{vsn, "$(PROJECT_VERSION)"},
+	{id, "$(1)"},
+	{modules, [$(2)]},
+	{registered, $(call erlang_list,$(PROJECT)_sup $(PROJECT_REGISTERED))},
+	{applications, $(call erlang_list,kernel stdlib $(OTP_DEPS) $(DEPS))},
+	{mod, {$(PROJECT)_app, []}}
+]}.
+endef
+endif
+
 app-build: erlc-include ebin/$(PROJECT).app
+	$(eval GITDESCRIBE := $(shell git describe --dirty --abbrev=7 --tags --always --first-parent 2>/dev/null || true))
 	$(eval MODULES := $(shell find ebin -type f -name \*.beam \
 		| sed "s/ebin\//'/;s/\.beam/',/" | sed '$$s/.$$//'))
-	@if [ -z "$$(grep -E '^[^%]*{modules,' src/$(PROJECT).app.src)" ]; then \
+ifeq ($(wildcard src/$(PROJECT).app.src),)
+	$(app_verbose) echo $(subst $(newline),,$(subst ",\",$(call app_file,$(GITDESCRIBE),$(MODULES)))) \
+		> ebin/$(PROJECT).app
+else
+	@if [ -z "$$(grep -E '^[^%]*{\s*modules\s*,' src/$(PROJECT).app.src)" ]; then \
 		echo "Empty modules entry not found in $(PROJECT).app.src. Please consult the erlang.mk README for instructions." >&2; \
 		exit 1; \
 	fi
-	$(eval GITDESCRIBE := $(shell git describe --dirty --abbrev=7 --tags --always --first-parent 2>/dev/null || true))
 	$(appsrc_verbose) cat src/$(PROJECT).app.src \
-		| sed "s/{modules,[[:space:]]*\[\]}/{modules, \[$(MODULES)\]}/" \
+		| sed "s/{[[:space:]]*modules[[:space:]]*,[[:space:]]*\[\]}/{modules, \[$(MODULES)\]}/" \
 		| sed "s/{id,[[:space:]]*\"git\"}/{id, \"$(GITDESCRIBE)\"}/" \
 		> ebin/$(PROJECT).app
+endif
 
 erlc-include:
 	-@if [ -d ebin/ ]; then \
@@ -1646,7 +1716,7 @@ help::
 # Plugin-specific targets.
 
 $(DIALYZER_PLT): deps app
-	@dialyzer --build_plt --apps erts kernel stdlib $(PLT_APPS) $(ALL_DEPS_DIRS)
+	@dialyzer --build_plt --apps erts kernel stdlib $(PLT_APPS) $(OTP_DEPS) $(ALL_DEPS_DIRS)
 
 plt: $(DIALYZER_PLT)
 
@@ -1683,7 +1753,7 @@ edoc: doc-deps
 distclean-edoc:
 	$(gen_verbose) rm -f doc/*.css doc/*.html doc/*.png doc/edoc-info
 
-# Copyright (c) 2014, Juan Facorro <juan@inaka.net>
+# Copyright (c) 2015, Erlang Solutions Ltd.
 # This file is part of erlang.mk and subject to the terms of the ISC License.
 
 .PHONY: elvis distclean-elvis
@@ -1695,8 +1765,8 @@ ELVIS_CONFIG ?= $(CURDIR)/elvis.config
 ELVIS ?= $(CURDIR)/elvis
 export ELVIS
 
-ELVIS_URL ?= https://github.com/inaka/elvis/releases/download/0.2.3/elvis
-ELVIS_CONFIG_URL ?= https://github.com/inaka/elvis/releases/download/0.2.3/elvis.config
+ELVIS_URL ?= https://github.com/inaka/elvis/releases/download/0.2.5-beta2/elvis
+ELVIS_CONFIG_URL ?= https://github.com/inaka/elvis/releases/download/0.2.5-beta2/elvis.config
 ELVIS_OPTS ?=
 
 # Core targets.
@@ -2024,7 +2094,7 @@ triq: test-build
 endif
 endif
 
-# Copyright (c) 2015, Euen Lopez <euen@inakanetworks.com>
+# Copyright (c) 2015, Erlang Solutions Ltd.
 # This file is part of erlang.mk and subject to the terms of the ISC License.
 
 .PHONY: xref distclean-xref
@@ -2040,7 +2110,7 @@ endif
 XREFR ?= $(CURDIR)/xrefr
 export XREFR
 
-XREFR_URL ?= https://github.com/inaka/xref_runner/releases/download/0.2.0/xrefr
+XREFR_URL ?= https://github.com/inaka/xref_runner/releases/download/0.2.2/xrefr
 
 # Core targets.
 
@@ -2068,11 +2138,6 @@ distclean-xref:
 
 COVER_REPORT_DIR = cover
 
-# utility variables for representing special symbols
-empty :=
-space := $(empty) $(empty)
-comma := ,
-
 # Hook in coverage to eunit
 
 ifdef COVER
@@ -2090,7 +2155,6 @@ endif
 
 ifdef COVER
 ifdef CT_RUN
-
 # All modules in 'ebin'
 COVER_MODS = $(notdir $(basename $(shell echo ebin/*.beam)))
 
